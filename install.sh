@@ -1,8 +1,8 @@
 #!/bin/sh
 
-owner='antonmedv'
+owner='anton-povarov'
 name='walk'
-version='v1.13.0'
+version='v1.14.0-antoxa'
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 machine=$(uname -m)
