@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"io/fs"
 	"math"
@@ -10,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	. "strings"
 	"time"
 	"unicode/utf8"
@@ -727,6 +729,18 @@ files:
 		}
 		m.files = append(m.files, file)
 	}
+
+	// dirs before files
+	slices.SortFunc(m.files, func(l, r os.DirEntry) int {
+		ld, rd := l.IsDir(), r.IsDir()
+		if ld == rd {
+			return cmp.Compare(l.Name(), r.Name())
+		}
+		if ld {
+			return -1
+		}
+		return 1
+	})
 }
 
 func (m *model) listHeight() int {
