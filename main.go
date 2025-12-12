@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	. "strings"
 	"time"
 	"unicode/utf8"
@@ -882,6 +883,10 @@ func (m *model) preview() {
 		if len(output) >= height {
 			output = output[0:height]
 		}
+		if withBorder {
+			// add empty lines to keep the border separator full height
+			output = append(output, strings.Repeat("\n", height))
+		}
 		m.previewContent = Join(output, "\n")
 		return
 	}
@@ -922,6 +927,10 @@ func (m *model) preview() {
 	switch {
 	case utf8.Valid(content):
 		previewContent := leaveOnlyAscii(content)
+		if withBorder {
+			// add empty lines to keep the border separator full height
+			previewContent += strings.Repeat("\n", height)
+		}
 		m.previewContent = previewContent
 
 		if withHighlight {
