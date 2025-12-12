@@ -27,8 +27,8 @@ func initStyles() {
 	danger = lipgloss.NewStyle().Background(lipgloss.Color("#FF0000")).Foreground(lipgloss.Color("#FFFFFF"))
 	previewPlain = lipgloss.NewStyle().PaddingLeft(2)
 	previewSplit = lipgloss.NewStyle().
-		MarginLeft(1).
-		PaddingLeft(1).
+		MarginLeft(2).
+		PaddingLeft(2).
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(mainColor).
 		BorderLeft(true)

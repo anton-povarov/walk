@@ -930,7 +930,7 @@ func (m *model) preview() {
 			if lexer == nil {
 				lexer = lexers.Fallback
 			}
-			if err := quick.Highlight(&buf, previewContent, lexer.Config().Name, "terminal256", "friendly"); err == nil {
+			if err := quick.Highlight(&buf, previewContent, lexer.Config().Name, "terminal256", "nordic"); err == nil {
 				m.previewContent = buf.String()
 			}
 		}
