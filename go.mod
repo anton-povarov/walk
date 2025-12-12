@@ -1,4 +1,6 @@
-module github.com/antonmedv/walk
+// initially forked from, but I want to make it go install-able for myself
+// module github.com/antonmedv/walk
+module github.com/anton-povarov/walk
 
 go 1.21
 
