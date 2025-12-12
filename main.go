@@ -990,23 +990,26 @@ start:
 			if n >= len(files) {
 				break // No more files to display.
 			}
-			name := ""
-			if showIcons {
-				info, err := files[n].Info()
-				if err == nil {
-					icon := icons.getIcon(info)
-					if icon != "" {
-						name += icon + " "
-					}
-				}
-			}
-			name += files[n].Name()
 			if callback != nil {
 				callback(files[n].Name(), i, j)
 			}
+
+			icon := ""
+			if showIcons {
+				info, err := files[n].Info()
+				if err == nil {
+					icon = icons.getIcon(info)
+					if icon != "" {
+						icon += " "
+					}
+				}
+			}
+
+			name := ""
 			if files[n].IsDir() {
-				// Dirs should have a slash at the end.
-				name += fileSeparator
+				name = fmt.Sprintf("%s[%s] ", icon, files[n].Name())
+			} else {
+				name = fmt.Sprintf("%s%s ", icon, files[n].Name())
 			}
 
 			n++ // Next file.
