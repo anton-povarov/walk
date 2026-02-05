@@ -150,6 +150,7 @@ type model struct {
 	path                  string              // Current dir path we are looking at.
 	files                 []fs.DirEntry       // Files we are looking at.
 	err                   error               // Error while listing files.
+	errStatus             error               // Minor error while executing actions - shown in statusbar
 	c, r                  int                 // Selector position in columns and rows.
 	columns, rows         int                 // Displayed amount of rows and columns.
 	termWidth, termHeight int                 // Terminal size.
@@ -275,7 +276,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !ok {
 				return m, nil
 			}
-			if fi := fileInfo(filePath); fi.IsDir() {
+
+			fileInfo, err := os.Stat(filePath)
+			if err != nil {
+				m.errStatus = err
+				return m, nil
+			}
+
+			if fileInfo.IsDir() {
 				// Enter subdirectory.
 				m.path = filePath
 				if p, ok := m.positions[m.path]; ok {
@@ -413,6 +421,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		} // End of switch statement for key presses.
 
+		m.errStatus = nil
 		m.deleteCurrentFile = false
 		m.showHelp = false
 		m.yankedFilePath = ""
@@ -574,7 +583,10 @@ func (m *model) View() string {
 	if m.showStatusBar() {
 		// Only show one status bar.
 		// TODO: Show most recent status bar.
-		if len(m.toBeDeleted) > 0 {
+		if m.errStatus != nil {
+			errorBar := fmt.Sprintf("error %v", m.errStatus)
+			main += "\n" + danger.Render(errorBar)
+		} else if len(m.toBeDeleted) > 0 {
 			toDelete := m.toBeDeleted[len(m.toBeDeleted)-1]
 			timeLeft := int(toDelete.at.Sub(time.Now()).Seconds())
 			deleteBar := fmt.Sprintf("%v deleted. (u)ndo %v", path.Base(toDelete.path), timeLeft)
@@ -753,6 +765,9 @@ func (m *model) listHeight() int {
 }
 
 func (m *model) showStatusBar() bool {
+	if m.errStatus != nil {
+		return true
+	}
 	if len(m.toBeDeleted) > 0 {
 		return true
 	}
@@ -1006,10 +1021,13 @@ start:
 			}
 
 			name := ""
-			if files[n].IsDir() {
-				name = fmt.Sprintf("%s[%s] ", icon, files[n].Name())
+			file, fileMode := files[n], files[n].Type()
+			if fileMode&fs.ModeDir != 0 {
+				name = fmt.Sprintf("%s[%s] ", icon, file.Name())
+			} else if fileMode&fs.ModeSymlink != 0 {
+				name = fmt.Sprintf("%s~%s ", icon, file.Name())
 			} else {
-				name = fmt.Sprintf("%s%s ", icon, files[n].Name())
+				name = fmt.Sprintf("%s%s ", icon, file.Name())
 			}
 
 			n++ // Next file.
