@@ -263,7 +263,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dontDoPendingDeletions()
 			return m, tea.Quit
 
-		case key.Matches(msg, keyQuit, keyQuitQ):
+		case key.Matches(msg, keyQuit, keyQuitQ, keyQuitCQ):
 			m.quitting = true
 			m.exitCode = 0
 			m.performPendingDeletions()

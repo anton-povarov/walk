@@ -8,6 +8,7 @@ var (
 	keyForceQuit = key.NewBinding(key.WithKeys("ctrl+c"))
 	keyQuit      = key.NewBinding(key.WithKeys("esc"))
 	keyQuitQ     = key.NewBinding(key.WithKeys("q"))
+	keyQuitCQ    = key.NewBinding(key.WithKeys("ctrl+q"))
 	keyOpen      = key.NewBinding(key.WithKeys("enter"))
 	keyBack      = key.NewBinding(key.WithKeys("backspace"))
 	keyFnDelete  = key.NewBinding(key.WithKeys("delete"))
