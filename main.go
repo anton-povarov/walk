@@ -30,7 +30,7 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-var Version = "v1.14.0-antoxa"
+var Version = "v1.15.0-antoxa"
 
 const separator = "    " // Separator between columns.
 
