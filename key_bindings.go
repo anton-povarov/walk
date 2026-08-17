@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/viewport"
 )
 
 var (
@@ -10,6 +11,7 @@ var (
 	keyQuitQ     = key.NewBinding(key.WithKeys("q"))
 	keyQuitCQ    = key.NewBinding(key.WithKeys("ctrl+q"))
 	keyOpen      = key.NewBinding(key.WithKeys("enter"))
+	keyTab       = key.NewBinding(key.WithKeys("tab"))
 	keyBack      = key.NewBinding(key.WithKeys("backspace"))
 	keyFnDelete  = key.NewBinding(key.WithKeys("delete"))
 	keyUp        = key.NewBinding(key.WithKeys("up"))
@@ -38,3 +40,17 @@ var (
 	keyHidden    = key.NewBinding(key.WithKeys("."))
 	keyHelp      = key.NewBinding(key.WithKeys("?"))
 )
+
+func newPreviewViewport() viewport.Model {
+	v := viewport.New(1, 1)
+	v.MouseWheelEnabled = false
+	v.KeyMap = viewport.KeyMap{
+		PageDown:     key.NewBinding(key.WithKeys("pgdown", "f")),
+		PageUp:       key.NewBinding(key.WithKeys("pgup", "b")),
+		HalfPageUp:   key.NewBinding(key.WithDisabled()),
+		HalfPageDown: key.NewBinding(key.WithDisabled()),
+		Down:         key.NewBinding(key.WithKeys("down", "j")),
+		Up:           key.NewBinding(key.WithKeys("up", "k")),
+	}
+	return v
+}

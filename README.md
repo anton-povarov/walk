@@ -109,6 +109,9 @@ No additional setup is required.
 | <kbd>enter</kbd>                     | Enter directory    |
 | <kbd>backspace</kbd>                 | Exit directory     |
 | <kbd>space</kbd>                     | Toggle preview     |
+| <kbd>tab</kbd>                       | Open/switch preview pane |
+| <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>j</kbd>/<kbd>k</kbd> | Scroll focused preview |
+| <kbd>page up</kbd>/<kbd>page down</kbd>, <kbd>b</kbd>/<kbd>f</kbd> | Page focused preview |
 | <kbd>esc</kbd>, <kbd>q</kbd>         | Exit with cd       |
 | <kbd>ctrl</kbd> + <kbd>c</kbd>       | Exit without cd    |
 | <kbd>/</kbd>                         | Fuzzy search       |

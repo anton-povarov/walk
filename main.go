@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strings"
 	. "strings"
 	"time"
 	"unicode/utf8"
@@ -21,6 +20,7 @@ import (
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/antonmedv/clipboard"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/expr-lang/expr"
@@ -65,10 +65,12 @@ func main() {
 	initStyles()
 
 	m := &model{
-		termWidth:  80,
-		termHeight: 60,
-		positions:  make(map[string]position),
+		termWidth:       80,
+		termHeight:      60,
+		positions:       make(map[string]position),
+		previewViewport: newPreviewViewport(),
 	}
+	m.resizePreviewViewport()
 
 	if statusBar, ok := os.LookupEnv("WALK_STATUS_BAR"); ok {
 		m.statusBar = compile(statusBar)
@@ -111,6 +113,7 @@ func main() {
 		}
 		argsWithoutFlags = append(argsWithoutFlags, os.Args[i])
 	}
+	m.resizePreviewViewport()
 
 	if len(argsWithoutFlags) > 0 {
 		startPath, err = filepath.Abs(argsWithoutFlags[0])
@@ -164,7 +167,9 @@ type model struct {
 	findPrevName          bool                // On View(), set c&r to point to prevName.
 	exitCode              int                 // Exit code.
 	previewMode           bool                // Whether preview is active.
-	previewContent        string              // Content of preview.
+	previewFocused        bool                // Whether the preview pane receives navigation keys.
+	previewPath           string              // Path whose content is loaded in the preview viewport.
+	previewViewport       viewport.Model      // Scrollable preview pane.
 	deleteCurrentFile     bool                // Whether to delete current file.
 	toBeDeleted           []toDelete          // Map of files to be deleted.
 	yankedFilePath        string              // Show yank info
@@ -201,6 +206,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.termHeight < 3 {
 			m.termHeight = 3
 		}
+		m.resizePreviewViewport()
 		// Reset position history as c&r changes.
 		m.positions = make(map[string]position)
 		// Keep cursor at same place.
@@ -215,11 +221,31 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.previewFocused {
+			switch {
+			case key.Matches(msg, keyForceQuit):
+				return m.quit(true)
+
+			case key.Matches(msg, keyQuit, keyQuitQ, keyQuitCQ):
+				return m.quit(false)
+
+			case key.Matches(msg, keyTab):
+				m.previewFocused = false
+				m.clearTransientState()
+				return m, nil
+
+			default:
+				var cmd tea.Cmd
+				m.previewViewport, cmd = m.previewViewport.Update(msg)
+				return m, cmd
+			}
+		}
+
 		// Make undo work even if we are in fuzzy mode.
 		if key.Matches(msg, keyUndo) && len(m.toBeDeleted) > 0 {
 			m.toBeDeleted = m.toBeDeleted[:len(m.toBeDeleted)-1]
 			m.list()
-			m.previewContent = ""
+			m.clearPreview()
 			return m, nil
 		}
 
@@ -258,16 +284,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch {
 		case key.Matches(msg, keyForceQuit):
-			m.quitting = true
-			m.exitCode = 2
-			m.dontDoPendingDeletions()
-			return m, tea.Quit
+			return m.quit(true)
 
 		case key.Matches(msg, keyQuit, keyQuitQ, keyQuitCQ):
-			m.quitting = true
-			m.exitCode = 0
-			m.performPendingDeletions()
-			return m, tea.Quit
+			return m.quit(false)
 
 		case key.Matches(msg, keyOpen):
 			m.search = ""
@@ -363,24 +383,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.searchId++
 			m.search = ""
 
-		case key.Matches(msg, keyPreview):
-			m.previewMode = !m.previewMode
-			// Reset position history as c&r changes.
-			m.positions = make(map[string]position)
-			// Keep cursor at same place.
-			fileName, ok := m.currentFileName()
-			if !ok {
+		case key.Matches(msg, keyTab):
+			if m.previewMode {
+				if _, ok := m.currentFileName(); !ok {
+					return m, nil
+				}
+				m.previewFocused = true
+				m.clearTransientState()
 				return m, nil
 			}
-			m.prevName = fileName
-			m.findPrevName = true
 
-			if m.previewMode {
-				return m, tea.EnterAltScreen
-			} else {
-				m.previewContent = ""
-				return m, tea.ExitAltScreen
-			}
+			return m, m.togglePreview(true)
+
+		case key.Matches(msg, keyPreview):
+			return m, m.togglePreview(false)
 
 		case key.Matches(msg, keyDelete, keyFnDelete):
 			filePathToDelete, ok := m.filePath()
@@ -392,7 +408,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						at:   time.Now().Add(6 * time.Second),
 					})
 					m.list()
-					m.previewContent = ""
+					m.clearPreview()
 					return m, tea.Tick(time.Second, func(time.Time) tea.Msg {
 						return toBeDeletedMsg(0)
 					})
@@ -421,10 +437,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		} // End of switch statement for key presses.
 
-		m.errStatus = nil
-		m.deleteCurrentFile = false
-		m.showHelp = false
-		m.yankedFilePath = ""
+		m.clearTransientState()
 		m.updateOffset()
 		m.saveCursorPosition()
 
@@ -452,6 +465,86 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *model) togglePreview(focusOnEnable bool) tea.Cmd {
+	m.previewMode = !m.previewMode
+	m.previewFocused = false
+	// Reset position history as c&r changes.
+	m.positions = make(map[string]position)
+	// Keep cursor at same place.
+	fileName, ok := m.currentFileName()
+	if !ok {
+		return nil
+	}
+	m.prevName = fileName
+	m.findPrevName = true
+
+	if m.previewMode {
+		m.previewFocused = focusOnEnable
+		m.clearTransientState()
+		return tea.EnterAltScreen
+	}
+
+	m.clearPreview()
+	return tea.ExitAltScreen
+}
+
+func (m *model) quit(force bool) (tea.Model, tea.Cmd) {
+	m.quitting = true
+	if force {
+		m.exitCode = 2
+		m.dontDoPendingDeletions()
+	} else {
+		m.exitCode = 0
+		m.performPendingDeletions()
+	}
+	return m, tea.Quit
+}
+
+func (m *model) clearTransientState() {
+	m.errStatus = nil
+	m.deleteCurrentFile = false
+	m.showHelp = false
+	m.yankedFilePath = ""
+}
+
+func (m *model) previewStyle() lipgloss.Style {
+	if withBorder {
+		return previewSplit
+	}
+	return previewPlain
+}
+
+func (m *model) resizePreviewViewport() {
+	width := m.termWidth/2 - m.previewStyle().GetHorizontalFrameSize()
+	m.previewViewport.Width = max(1, width)
+	m.previewViewport.Height = max(1, m.termHeight-1) // Subtract 1 for the filename header.
+	m.previewViewport.SetYOffset(m.previewViewport.YOffset)
+}
+
+func (m *model) setPreviewContent(filePath, content string) {
+	pathChanged := m.previewPath != filePath
+	m.previewPath = filePath
+	m.previewViewport.SetContent(content)
+	if pathChanged {
+		m.previewViewport.GotoTop()
+	} else {
+		m.previewViewport.SetYOffset(m.previewViewport.YOffset)
+	}
+}
+
+func (m *model) clearPreview() {
+	m.previewPath = ""
+	m.previewViewport.SetContent("")
+	m.previewViewport.GotoTop()
+}
+
+func (m *model) renderPreviewHeader(fileName string) string {
+	if m.previewFocused {
+		return cursor.Render(fileName)
+	}
+	return bar.Render(fileName)
 }
 
 func (m *model) updateSearch(msg tea.KeyMsg) {
@@ -544,8 +637,8 @@ func (m *model) View() string {
 
 	// Preview pane.
 	fileName, _ := m.currentFileName()
-	previewPane := bar.Render(fileName) + "\n"
-	previewPane += m.previewContent
+	previewHeader := m.renderPreviewHeader(fileName)
+	previewPane := previewHeader + "\n" + m.previewViewport.View()
 
 	// Location bar (grey).
 	location := m.path
@@ -613,16 +706,10 @@ func (m *model) View() string {
 
 	view := main
 	if m.previewMode {
-		previewStyle := previewPlain
-		if withBorder {
-			previewStyle = previewSplit
-		}
 		view = lipgloss.JoinHorizontal(
 			lipgloss.Top,
 			main,
-			previewStyle.
-				MaxHeight(m.termHeight).
-				Render(previewPane),
+			m.previewStyle().Render(previewPane),
 		)
 	}
 
@@ -860,28 +947,28 @@ func (m *model) preview() {
 	filePath, ok := m.filePath()
 	if !ok {
 		// Normally this should not happen
-		m.previewContent = warning.Render("Invalid file to preview")
+		m.setPreviewContent("", warning.Render("Invalid file to preview"))
 		return
 	}
 
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
-		m.previewContent = warning.Render(err.Error())
+		m.setPreviewContent(filePath, warning.Render(err.Error()))
 		return
 	}
 
-	width := m.termWidth / 2
-	height := m.termHeight - 1 // Subtract 1 for name bar.
+	width := m.previewViewport.Width
+	height := m.previewViewport.Height
 
 	if fileInfo.IsDir() {
 		files, err := os.ReadDir(filePath)
 		if err != nil {
-			m.previewContent = warning.Render(err.Error())
+			m.setPreviewContent(filePath, warning.Render(err.Error()))
 			return
 		}
 
 		if len(files) == 0 {
-			m.previewContent = warning.Render("No files")
+			m.setPreviewContent(filePath, warning.Render("No files"))
 			return
 		}
 
@@ -895,24 +982,17 @@ func (m *model) preview() {
 			}
 			output[j] = Join(row, separator)
 		}
-		if len(output) >= height {
-			output = output[0:height]
-		}
-		if withBorder {
-			// add empty lines to keep the border separator full height
-			output = append(output, strings.Repeat("\n", height))
-		}
-		m.previewContent = Join(output, "\n")
+		m.setPreviewContent(filePath, Join(output, "\n"))
 		return
 	}
 
 	if isImage(filePath) {
 		img, err := drawImage(filePath, width, height)
 		if err != nil {
-			m.previewContent = warning.Render("No image preview available")
+			m.setPreviewContent(filePath, warning.Render("No image preview available"))
 			return
 		}
-		m.previewContent = img
+		m.setPreviewContent(filePath, img)
 		return
 	}
 
@@ -921,20 +1001,20 @@ func (m *model) preview() {
 	if fileInfo.Size() > 100*1024 {
 		file, err := os.Open(filePath)
 		if err != nil {
-			m.previewContent = err.Error()
+			m.setPreviewContent(filePath, err.Error())
 			return
 		}
 		defer file.Close()
 		content = make([]byte, 100*1024)
 		_, err = file.Read(content)
 		if err != nil {
-			m.previewContent = err.Error()
+			m.setPreviewContent(filePath, err.Error())
 			return
 		}
 	} else {
 		content, err = os.ReadFile(filePath)
 		if err != nil {
-			m.previewContent = err.Error()
+			m.setPreviewContent(filePath, err.Error())
 			return
 		}
 	}
@@ -942,11 +1022,6 @@ func (m *model) preview() {
 	switch {
 	case utf8.Valid(content):
 		previewContent := leaveOnlyAscii(content)
-		if withBorder {
-			// add empty lines to keep the border separator full height
-			previewContent += strings.Repeat("\n", height)
-		}
-		m.previewContent = previewContent
 
 		if withHighlight {
 			var buf bytes.Buffer
@@ -955,11 +1030,12 @@ func (m *model) preview() {
 				lexer = lexers.Fallback
 			}
 			if err := quick.Highlight(&buf, previewContent, lexer.Config().Name, "terminal256", "nordic"); err == nil {
-				m.previewContent = buf.String()
+				previewContent = buf.String()
 			}
 		}
+		m.setPreviewContent(filePath, previewContent)
 	default:
-		m.previewContent = warning.Render("No preview available")
+		m.setPreviewContent(filePath, warning.Render("No preview available"))
 	}
 }
 
