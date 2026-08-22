@@ -31,7 +31,7 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-var Version = "v1.15.0-antoxa"
+var Version = "v1.16.0-antoxa"
 
 const separator = "    " // Separator between columns.
 
@@ -518,7 +518,10 @@ func (m *model) previewStyle() lipgloss.Style {
 }
 
 func (m *model) resizePreviewViewport() {
-	leftWidth := m.termWidth / 2
+	m.resizePreviewViewportForLeftWidth(m.termWidth / 2)
+}
+
+func (m *model) resizePreviewViewportForLeftWidth(leftWidth int) {
 	width := m.termWidth - leftWidth - m.previewStyle().GetHorizontalFrameSize() - 1
 	m.previewViewport.Width = max(1, width)
 	m.previewViewport.Height = max(1, m.termHeight-1) // Subtract 1 for the filename header.
@@ -538,6 +541,11 @@ func renderFullWidth(style lipgloss.Style, content string, width int) string {
 	content = ansi.Truncate(content, width, "")
 	content += Repeat(" ", max(0, width-ansi.StringWidth(content)))
 	return style.Render(content)
+}
+
+func minimumPreviewLeftWidth(termWidth int) int {
+	availableWidth := max(1, termWidth-1) // Reserve the RHS right margin.
+	return (availableWidth*7 + 19) / 20   // 35%, rounded up.
 }
 
 func (m *model) setPreviewContent(filePath, content string) {
@@ -614,10 +622,6 @@ func (m *model) View() string {
 		m.saveCursorPosition()
 	}
 
-	// After we have updated offset and saved cursor position, we can
-	// preview currently selected file.
-	m.preview()
-
 	// Get output rows width before coloring.
 	outputWidth := strlen(path.Base(m.path)) // Use current dir name as default.
 	if m.previewMode {
@@ -633,6 +637,16 @@ func (m *model) View() string {
 	} else {
 		outputWidth = width
 	}
+	leftWidth := outputWidth
+	if m.previewMode {
+		maxLeftWidth := m.termWidth - m.previewStyle().GetHorizontalFrameSize() - 2
+		leftWidth = max(leftWidth, minimumPreviewLeftWidth(m.termWidth))
+		leftWidth = min(leftWidth, max(1, maxLeftWidth))
+		m.resizePreviewViewportForLeftWidth(leftWidth)
+	}
+
+	// Preview after its width is derived from the actual LHS content width.
+	m.preview()
 
 	// Let's add colors to file names.
 	output := make([]string, m.rows)
@@ -681,8 +695,8 @@ func (m *model) View() string {
 		}
 	}
 	barLen := strlen(location) + strlen(filter)
-	if barLen > outputWidth {
-		location = location[min(barLen-outputWidth, strlen(location)):]
+	if barLen > leftWidth {
+		location = location[min(barLen-leftWidth, strlen(location)):]
 	}
 	barStr := bar.Render(location) + search.Render(filter)
 
@@ -699,15 +713,15 @@ func (m *model) View() string {
 		// TODO: Show most recent status bar.
 		if m.errStatus != nil {
 			errorBar := fmt.Sprintf("error %v", m.errStatus)
-			main += "\n" + renderFullWidth(danger, errorBar, width)
+			main += "\n" + renderFullWidth(danger, errorBar, leftWidth)
 		} else if len(m.toBeDeleted) > 0 {
 			toDelete := m.toBeDeleted[len(m.toBeDeleted)-1]
 			timeLeft := int(toDelete.at.Sub(time.Now()).Seconds())
 			deleteBar := fmt.Sprintf("%v deleted. (u)ndo %v", path.Base(toDelete.path), timeLeft)
-			main += "\n" + renderFullWidth(danger, deleteBar, width)
+			main += "\n" + renderFullWidth(danger, deleteBar, leftWidth)
 		} else if m.yankedFilePath != "" {
 			yankBar := fmt.Sprintf("copied: %v", m.yankedFilePath)
-			main += "\n" + renderFullWidth(bar, yankBar, width)
+			main += "\n" + renderFullWidth(bar, yankBar, leftWidth)
 		} else if m.statusBar != nil {
 			f, ok := m.currentFile()
 			if ok {
@@ -719,7 +733,7 @@ func (m *model) View() string {
 				if err != nil {
 					main += "\n" + err.Error()
 				} else {
-					main += "\n" + renderFullWidth(bar, fmt.Sprintf("%v", statusBar), width)
+					main += "\n" + renderFullWidth(bar, fmt.Sprintf("%v", statusBar), leftWidth)
 				}
 			}
 		}
@@ -729,7 +743,7 @@ func (m *model) View() string {
 	if m.previewMode {
 		view = lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			fitPaneWidth(main, width),
+			fitPaneWidth(main, leftWidth),
 			m.previewStyle().Render(previewPane),
 		)
 	}
