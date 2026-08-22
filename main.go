@@ -23,6 +23,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 	"github.com/mattn/go-runewidth"
@@ -517,15 +518,35 @@ func (m *model) previewStyle() lipgloss.Style {
 }
 
 func (m *model) resizePreviewViewport() {
-	width := m.termWidth/2 - m.previewStyle().GetHorizontalFrameSize()
+	leftWidth := m.termWidth / 2
+	width := m.termWidth - leftWidth - m.previewStyle().GetHorizontalFrameSize() - 1
 	m.previewViewport.Width = max(1, width)
 	m.previewViewport.Height = max(1, m.termHeight-1) // Subtract 1 for the filename header.
 	m.previewViewport.SetYOffset(m.previewViewport.YOffset)
 }
 
+func fitPaneWidth(content string, width int) string {
+	lines := Split(content, "\n")
+	for i, line := range lines {
+		line = ansi.Truncate(line, width, "")
+		lines[i] = line + Repeat(" ", max(0, width-ansi.StringWidth(line)))
+	}
+	return Join(lines, "\n")
+}
+
+func renderFullWidth(style lipgloss.Style, content string, width int) string {
+	content = ansi.Truncate(content, width, "")
+	content += Repeat(" ", max(0, width-ansi.StringWidth(content)))
+	return style.Render(content)
+}
+
 func (m *model) setPreviewContent(filePath, content string) {
 	pathChanged := m.previewPath != filePath
 	m.previewPath = filePath
+	content = ansi.Wrap(content, m.previewViewport.Width, "")
+	// A syntax style can span a line inserted by Wrap. Reset it before the
+	// panes are joined so the next row's LHS content cannot inherit RHS color.
+	content = ReplaceAll(content, "\n", ansi.ResetStyle+"\n") + ansi.ResetStyle
 	m.previewViewport.SetContent(content)
 	if pathChanged {
 		m.previewViewport.GotoTop()
@@ -638,7 +659,7 @@ func (m *model) View() string {
 	// Preview pane.
 	fileName, _ := m.currentFileName()
 	previewHeader := m.renderPreviewHeader(fileName)
-	previewPane := previewHeader + "\n" + m.previewViewport.View()
+	previewPane := fitPaneWidth(previewHeader+"\n"+m.previewViewport.View(), m.previewViewport.Width)
 
 	// Location bar (grey).
 	location := m.path
@@ -678,15 +699,15 @@ func (m *model) View() string {
 		// TODO: Show most recent status bar.
 		if m.errStatus != nil {
 			errorBar := fmt.Sprintf("error %v", m.errStatus)
-			main += "\n" + danger.Render(errorBar)
+			main += "\n" + renderFullWidth(danger, errorBar, width)
 		} else if len(m.toBeDeleted) > 0 {
 			toDelete := m.toBeDeleted[len(m.toBeDeleted)-1]
 			timeLeft := int(toDelete.at.Sub(time.Now()).Seconds())
 			deleteBar := fmt.Sprintf("%v deleted. (u)ndo %v", path.Base(toDelete.path), timeLeft)
-			main += "\n" + danger.Render(deleteBar)
+			main += "\n" + renderFullWidth(danger, deleteBar, width)
 		} else if m.yankedFilePath != "" {
 			yankBar := fmt.Sprintf("copied: %v", m.yankedFilePath)
-			main += "\n" + bar.Render(yankBar)
+			main += "\n" + renderFullWidth(bar, yankBar, width)
 		} else if m.statusBar != nil {
 			f, ok := m.currentFile()
 			if ok {
@@ -698,7 +719,7 @@ func (m *model) View() string {
 				if err != nil {
 					main += "\n" + err.Error()
 				} else {
-					main += "\n" + bar.Render(fmt.Sprintf("%v", statusBar))
+					main += "\n" + renderFullWidth(bar, fmt.Sprintf("%v", statusBar), width)
 				}
 			}
 		}
@@ -708,7 +729,7 @@ func (m *model) View() string {
 	if m.previewMode {
 		view = lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			main,
+			fitPaneWidth(main, width),
 			m.previewStyle().Render(previewPane),
 		)
 	}
@@ -1021,7 +1042,9 @@ func (m *model) preview() {
 
 	switch {
 	case utf8.Valid(content):
-		previewContent := leaveOnlyAscii(content)
+		// Wrap before highlighting so generated rows are independently styled,
+		// and so the viewport counts them when calculating its scroll range.
+		previewContent := ansi.Wrap(leaveOnlyAscii(content), width, "")
 
 		if withHighlight {
 			var buf bytes.Buffer

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func newTestModel(t *testing.T, files map[string]string) *model {
@@ -241,6 +242,100 @@ func TestShortPreviewDoesNotScroll(t *testing.T) {
 	updateKey(t, m, tea.KeyMsg{Type: tea.KeyPgDown})
 	if m.previewViewport.YOffset != 0 {
 		t.Fatalf("short preview should not scroll, got offset %d", m.previewViewport.YOffset)
+	}
+}
+
+func TestWrappedPreviewCanScrollToEnd(t *testing.T) {
+	oldHighlight := withHighlight
+	withHighlight = false
+	t.Cleanup(func() { withHighlight = oldHighlight })
+
+	longLine := strings.Repeat("x", 3*38)
+	content := "first\n" + longLine + "\nafter wrap\nEND OF FILE"
+	m := newTestModel(t, map[string]string{
+		"file.txt": content,
+	})
+	m.previewMode = true
+	m.previewFocused = true
+	m.View()
+
+	logicalLines := strings.Count(content, "\n") + 1
+	if m.previewViewport.TotalLineCount() <= logicalLines {
+		t.Fatalf("wrapped rows were not included in viewport content: got %d rows", m.previewViewport.TotalLineCount())
+	}
+	m.previewViewport.GotoBottom()
+	if got := ansi.Strip(m.previewViewport.View()); !strings.Contains(got, "END OF FILE") {
+		t.Fatalf("last file line is not visible at bottom: %q", got)
+	}
+}
+
+func TestWrappedHighlightedPreviewRowsResetANSIStyles(t *testing.T) {
+	oldHighlight := withHighlight
+	withHighlight = true
+	t.Cleanup(func() { withHighlight = oldHighlight })
+
+	m := newTestModel(t, map[string]string{
+		"file.go": "package main\nimport \"github.com/alecthomas/chroma/v2/lexers/with/a/long/path\"\n",
+	})
+	m.previewMode = true
+	m.previewFocused = true
+	m.View()
+
+	for _, line := range strings.Split(m.previewViewport.View(), "\n") {
+		lineWithoutPadding := strings.TrimRight(line, " ")
+		if ansi.StringWidth(line) == m.previewViewport.Width && !strings.HasSuffix(lineWithoutPadding, ansi.ResetStyle) {
+			t.Fatalf("full-width preview row can leak its ANSI style into the LHS: %q", line)
+		}
+	}
+}
+
+func TestPreviewLeavesOneCellRightMargin(t *testing.T) {
+	oldBorder := withBorder
+	t.Cleanup(func() { withBorder = oldBorder })
+
+	for _, tc := range []struct {
+		name      string
+		bordered  bool
+		termWidth int
+	}{
+		{name: "plain-even", termWidth: 80},
+		{name: "plain-odd", termWidth: 81},
+		{name: "bordered-even", bordered: true, termWidth: 80},
+		{name: "bordered-odd", bordered: true, termWidth: 81},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withBorder = tc.bordered
+			m := newTestModel(t, map[string]string{"file.txt": "short preview"})
+			m.termWidth = tc.termWidth
+			m.resizePreviewViewport()
+			m.previewMode = true
+
+			for row, line := range strings.Split(m.View(), "\n") {
+				want := tc.termWidth - 1
+				if got := ansi.StringWidth(line); got != want {
+					t.Fatalf("row %d spans %d cells, want %d: %q", row, got, want, line)
+				}
+			}
+		})
+	}
+}
+
+func TestStatusBarFillsLHSWidth(t *testing.T) {
+	m := newTestModel(t, map[string]string{"file.txt": "preview"})
+	m.previewMode = true
+	m.statusBar = compile(`"status"`)
+
+	leftWidth := m.termWidth / 2
+	want := renderFullWidth(bar, "status", leftWidth)
+	found := false
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.HasPrefix(line, want) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("status bar did not fill the %d-cell LHS: %q", leftWidth, m.View())
 	}
 }
 
