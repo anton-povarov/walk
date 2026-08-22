@@ -13,22 +13,12 @@ Run `lk`, navigate using arrows or hjkl. Press, `esc` to jump to a new location;
 ## Install
 
 ```
-brew install walk
+go install github.com/anton-povarov/walk@latest
 ```
 
 ```
-pkg_add walk
+curl https://raw.githubusercontent.com/anton-povarov/walk/master/install.sh | sh
 ```
-
-```
-go install github.com/antonmedv/walk@latest
-```
-
-```
-curl https://raw.githubusercontent.com/antonmedv/walk/master/install.sh | sh
-```
-
-Or download [prebuild binaries](https://github.com/antonmedv/walk/releases).
 
 ### Setup
 
@@ -180,12 +170,6 @@ Flags can be used to change the default behavior of the program.
 | `--preview`     | Start with preview mode on  |
 | `--with-border` | Show border in preview mode |
 | `--fuzzy`       | Start with fuzzy search on  |
-
-## Related
-
-- [fx](https://github.com/antonmedv/fx) – terminal JSON viewer
-- [howto](https://github.com/antonmedv/howto) – terminal command LLM helper
-- [countdown](https://github.com/antonmedv/countdown) – terminal countdown timer
 
 ## License
 

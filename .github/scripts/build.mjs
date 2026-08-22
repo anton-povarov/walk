@@ -1,7 +1,7 @@
 $.verbose = true
 
 const bin = 'walk'
-const repo = 'antonmedv/walk'
+const repo = 'anton-povarov/walk'
 const goos = [
   'linux',
   'darwin',
