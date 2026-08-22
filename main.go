@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"cmp"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -16,8 +16,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/antonmedv/clipboard"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -124,7 +122,10 @@ func main() {
 	}
 
 	output := termenv.NewOutput(os.Stderr)
-	lipgloss.SetColorProfile(output.ColorProfile())
+	profile := output.ColorProfile()
+	lipgloss.SetColorProfile(profile)
+	m.highlightFormatter = formatterForProfile(profile)
+	m.highlightTheme = resolveHighlightTheme(os.Getenv("WALK_HIGHLIGHT_THEME"), os.Getenv("COLORFGBG"))
 
 	m.path = startPath
 	m.list()
@@ -171,6 +172,9 @@ type model struct {
 	previewFocused        bool                // Whether the preview pane receives navigation keys.
 	previewPath           string              // Path whose content is loaded in the preview viewport.
 	previewViewport       viewport.Model      // Scrollable preview pane.
+	highlightFormatter    string              // Chroma formatter matching the terminal color profile.
+	highlightTheme        string              // Validated Chroma theme name.
+	previewCache          textPreviewCache    // Most recently rendered file preview.
 	deleteCurrentFile     bool                // Whether to delete current file.
 	toBeDeleted           []toDelete          // Map of files to be deleted.
 	yankedFilePath        string              // Show yank info
@@ -549,11 +553,14 @@ func minimumPreviewLeftWidth(termWidth int) int {
 }
 
 func (m *model) setPreviewContent(filePath, content string) {
+	m.setPreviewContentWrapped(filePath, ansi.Wrap(content, m.previewViewport.Width, ""))
+}
+
+func (m *model) setPreviewContentWrapped(filePath, content string) {
 	pathChanged := m.previewPath != filePath
 	m.previewPath = filePath
-	content = ansi.Wrap(content, m.previewViewport.Width, "")
-	// A syntax style can span a line inserted by Wrap. Reset it before the
-	// panes are joined so the next row's LHS content cannot inherit RHS color.
+	// Reset each RHS row before panes are joined so neither source content nor
+	// a syntax style can leak into the LHS on the following terminal row.
 	content = ReplaceAll(content, "\n", ansi.ResetStyle+"\n") + ansi.ResetStyle
 	m.previewViewport.SetContent(content)
 	if pathChanged {
@@ -561,6 +568,22 @@ func (m *model) setPreviewContent(filePath, content string) {
 	} else {
 		m.previewViewport.SetYOffset(m.previewViewport.YOffset)
 	}
+}
+
+type textPreviewCacheKey struct {
+	path      string
+	modTime   int64
+	size      int64
+	width     int
+	formatter string
+	theme     string
+	highlight bool
+}
+
+type textPreviewCache struct {
+	key     textPreviewCacheKey
+	content string
+	valid   bool
 }
 
 func (m *model) clearPreview() {
@@ -1031,17 +1054,35 @@ func (m *model) preview() {
 		return
 	}
 
+	absolutePath, err := filepath.Abs(filePath)
+	if err != nil {
+		absolutePath = filePath
+	}
+	cacheKey := textPreviewCacheKey{
+		path:      absolutePath,
+		modTime:   fileInfo.ModTime().UnixNano(),
+		size:      fileInfo.Size(),
+		width:     width,
+		formatter: m.highlightFormatter,
+		theme:     m.highlightTheme,
+		highlight: withHighlight,
+	}
+	if m.previewCache.valid && m.previewCache.key == cacheKey {
+		m.setPreviewContentWrapped(filePath, m.previewCache.content)
+		return
+	}
+
 	var content []byte
 	// If file is too big (> 100kb), read only first 100kb.
-	if fileInfo.Size() > 100*1024 {
+	if fileInfo.Size() > previewByteLimit {
 		file, err := os.Open(filePath)
 		if err != nil {
 			m.setPreviewContent(filePath, err.Error())
 			return
 		}
 		defer file.Close()
-		content = make([]byte, 100*1024)
-		_, err = file.Read(content)
+		content = make([]byte, previewByteLimit)
+		_, err = io.ReadFull(file, content)
 		if err != nil {
 			m.setPreviewContent(filePath, err.Error())
 			return
@@ -1054,26 +1095,25 @@ func (m *model) preview() {
 		}
 	}
 
-	switch {
-	case utf8.Valid(content):
-		// Wrap before highlighting so generated rows are independently styled,
-		// and so the viewport counts them when calculating its scroll range.
-		previewContent := ansi.Wrap(leaveOnlyAscii(content), width, "")
-
-		if withHighlight {
-			var buf bytes.Buffer
-			lexer := lexers.Match(filePath)
-			if lexer == nil {
-				lexer = lexers.Fallback
-			}
-			if err := quick.Highlight(&buf, previewContent, lexer.Config().Name, "terminal256", "nordic"); err == nil {
-				previewContent = buf.String()
-			}
-		}
-		m.setPreviewContent(filePath, previewContent)
-	default:
-		m.setPreviewContent(filePath, warning.Render("No preview available"))
+	if fileInfo.Size() > previewByteLimit {
+		content = trimPartialUTF8Suffix(content)
 	}
+	if !utf8.Valid(content) {
+		m.setPreviewContent(filePath, warning.Render("No preview available"))
+		return
+	}
+
+	previewContent, err := renderTextPreview(filePath, content, highlightOptions{
+		Width:     width,
+		Formatter: m.highlightFormatter,
+		Theme:     m.highlightTheme,
+	}, withHighlight)
+	if err != nil {
+		m.setPreviewContent(filePath, warning.Render("No preview available"))
+		return
+	}
+	m.previewCache = textPreviewCache{key: cacheKey, content: previewContent, valid: true}
+	m.setPreviewContentWrapped(filePath, previewContent)
 }
 
 // TODO: Write tests for this function.

@@ -41,22 +41,6 @@ func remove(path string) {
 	}()
 }
 
-func leaveOnlyAscii(content []byte) string {
-	var result []byte
-
-	for _, b := range content {
-		if b == '\t' {
-			result = append(result, ' ', ' ', ' ', ' ')
-		} else if b == '\r' {
-			continue
-		} else if (b >= 32 && b <= 127) || b == '\n' { // '\n' is kept if newline needs to be retained
-			result = append(result, b)
-		}
-	}
-
-	return string(result)
-}
-
 func permBit(bit fs.FileMode, c byte) byte {
 	if bit != 0 {
 		return c

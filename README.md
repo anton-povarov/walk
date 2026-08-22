@@ -149,6 +149,19 @@ are [here](https://github.com/charmbracelet/lipgloss#colors).
 export WALK_MAIN_COLOR="#0000FF"
 ```
 
+Set `WALK_HIGHLIGHT_THEME` to a Chroma style name to override the syntax
+highlighting theme.
+
+```bash
+export WALK_HIGHLIGHT_THEME="monokai"
+```
+
+Set `WALK_NO_HIGHLIGHT` to disable syntax highlighting.
+
+```bash
+export WALK_NO_HIGHLIGHT=1
+```
+
 Use `WALK_STATUS_BAR` environment variable to specify a [status bar](STATUS_BAR.md) program.
 
 ```bash

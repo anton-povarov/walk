@@ -8,7 +8,7 @@ import (
 
 func usage(out io.Writer, full bool) {
 	if full {
-		_, _ = fmt.Fprintf(out, "\n  "+bold.Render("walk "+Version)+"\n\n  Usage: walk [path]\n\n")
+		_, _ = fmt.Fprint(out, "\n  "+bold.Render("walk "+Version)+"\n\n  Usage: walk [path]\n\n")
 	}
 	w := tabwriter.NewWriter(out, 0, 8, 2, ' ', 0)
 	put := func(s string) {
@@ -38,5 +38,5 @@ func usage(out io.Writer, full bool) {
 		put("    --fuzzy\tfuzzy mode")
 	}
 	_ = w.Flush()
-	_, _ = fmt.Fprintf(out, "\n")
+	_, _ = fmt.Fprint(out, "\n")
 }

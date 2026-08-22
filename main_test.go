@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -279,14 +282,105 @@ func TestWrappedHighlightedPreviewRowsResetANSIStyles(t *testing.T) {
 	})
 	m.previewMode = true
 	m.previewFocused = true
+	m.highlightFormatter = "terminal16m"
+	m.highlightTheme = defaultDarkHighlightTheme
 	m.View()
 
 	for _, line := range strings.Split(m.previewViewport.View(), "\n") {
 		lineWithoutPadding := strings.TrimRight(line, " ")
-		if lineWithoutPadding != "" && ansi.StringWidth(line) == m.previewViewport.Width && !strings.HasSuffix(lineWithoutPadding, ansi.ResetStyle) {
-			t.Fatalf("full-width preview row can leak its ANSI style into the LHS: %q", line)
+		if lineWithoutPadding != "" && !strings.HasSuffix(lineWithoutPadding, ansi.ResetStyle) {
+			t.Fatalf("preview row can leak its ANSI style into the LHS: %q", line)
 		}
 	}
+}
+
+func TestTextPreviewCacheAvoidsRerenderAndInvalidatesOnFileChange(t *testing.T) {
+	oldHighlight := withHighlight
+	withHighlight = false
+	t.Cleanup(func() { withHighlight = oldHighlight })
+
+	m := newTestModel(t, map[string]string{"file.txt": "original content"})
+	m.previewMode = true
+	m.View()
+	if !m.previewCache.valid {
+		t.Fatal("text preview was not cached")
+	}
+
+	m.previewCache.content = "CACHE SENTINEL"
+	m.View()
+	if got := ansi.Strip(m.previewViewport.View()); !strings.Contains(got, "CACHE SENTINEL") {
+		t.Fatalf("unchanged redraw missed the preview cache: %q", got)
+	}
+
+	filePath := filepath.Join(m.path, "file.txt")
+	if err := os.WriteFile(filePath, []byte("changed content with a new size"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.View()
+	if got := ansi.Strip(m.previewViewport.View()); strings.Contains(got, "CACHE SENTINEL") || !strings.Contains(got, "changed content") {
+		t.Fatalf("file metadata change did not invalidate cache: %q", got)
+	}
+
+	previousWidth := m.previewCache.key.width
+	m.termWidth = 60
+	m.View()
+	if m.previewCache.key.width == previousWidth {
+		t.Fatal("preview width change did not invalidate and rerender the cache")
+	}
+}
+
+func TestBinaryWarningAndImagePreviewsRemainAvailable(t *testing.T) {
+	t.Run("binary", func(t *testing.T) {
+		m := newTestModel(t, nil)
+		if err := os.WriteFile(filepath.Join(m.path, "binary.dat"), []byte{0xff, 0xfe, 0x00}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		m.list()
+		m.previewMode = true
+		m.View()
+		if got := ansi.Strip(m.previewViewport.View()); !strings.Contains(got, "No preview available") {
+			t.Fatalf("binary preview changed: %q", got)
+		}
+	})
+
+	t.Run("missing file warning", func(t *testing.T) {
+		m := newTestModel(t, map[string]string{"vanished.txt": "content"})
+		if err := os.Remove(filepath.Join(m.path, "vanished.txt")); err != nil {
+			t.Fatal(err)
+		}
+		m.previewMode = true
+		m.View()
+		if got := ansi.Strip(m.previewViewport.View()); !strings.Contains(got, "stat") {
+			t.Fatalf("missing-file warning changed: %q", got)
+		}
+	})
+
+	t.Run("image", func(t *testing.T) {
+		m := newTestModel(t, nil)
+		img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+		for y := 0; y < 8; y++ {
+			for x := 0; x < 8; x++ {
+				img.Set(x, y, color.RGBA{R: 220, G: 80, B: 40, A: 255})
+			}
+		}
+		file, err := os.Create(filepath.Join(m.path, "image.png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := png.Encode(file, img); err != nil {
+			_ = file.Close()
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		m.list()
+		m.previewMode = true
+		m.View()
+		if got := ansi.Strip(m.previewViewport.View()); strings.Contains(got, "No image preview available") || !strings.Contains(got, "▄") {
+			t.Fatalf("image preview changed: %q", got)
+		}
+	})
 }
 
 func TestPreviewLeavesOneCellRightMargin(t *testing.T) {
