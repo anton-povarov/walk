@@ -11,7 +11,7 @@ import (
 	"github.com/muesli/termenv"
 )
 
-var Version = "v1.16.0-antoxa"
+var Version = "v1.17.0-antoxa"
 
 var (
 	fileSeparator  = string(filepath.Separator)
