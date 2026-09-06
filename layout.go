@@ -37,7 +37,13 @@ func minimumPreviewLeftWidth(termWidth int) int {
 	return (availableWidth*7 + 19) / 20   // 35%, rounded up.
 }
 
-func (m *model) View() string {
+func (m *model) View() (viewResult string) {
+	var graphicFrame graphicsFrame
+	defer func() {
+		if m.graphics != nil {
+			viewResult = m.graphics.frame(graphicFrame) + viewResult
+		}
+	}()
 	if m.showHelp {
 		out := &Builder{}
 		out.WriteString(bar.Render("help") + "\n\n")
@@ -91,6 +97,12 @@ func (m *model) View() string {
 
 	// Preview after its width is derived from the actual LHS content width.
 	m.preview()
+	if m.previewMode && !m.quitting {
+		graphicFrame = graphicsFrame{m.previewGraphic, leftWidth + m.previewStyle().GetHorizontalFrameSize() + 1, 2}
+		if graphicFrame.image != nil && graphicFrame.x+graphicFrame.image.width-1 > m.termWidth {
+			graphicFrame = graphicsFrame{}
+		}
+	}
 
 	// Let's add colors to file names.
 	output := make([]string, m.rows)

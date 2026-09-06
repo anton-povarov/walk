@@ -44,13 +44,16 @@ type model struct {
 	highlightFormatter    string              // Chroma formatter matching the terminal color profile.
 	highlightTheme        string              // Validated Chroma theme name.
 	previewCache          textPreviewCache    // Most recently rendered file preview.
-	deleteCurrentFile     bool                // Whether to delete current file.
-	toBeDeleted           []toDelete          // Map of files to be deleted.
-	yankedFilePath        string              // Show yank info
-	hideHidden            bool                // Hide hidden files
-	showHelp              bool                // Show help
-	statusBar             *vm.Program         // Status bar program.
-	quitting              bool                // Whether we are quitting the program.
+	images                *imagePreview
+	graphics              *graphicsOutput
+	previewGraphic        *preparedGraphic
+	deleteCurrentFile     bool        // Whether to delete current file.
+	toBeDeleted           []toDelete  // Map of files to be deleted.
+	yankedFilePath        string      // Show yank info
+	hideHidden            bool        // Hide hidden files
+	showHelp              bool        // Show help
+	statusBar             *vm.Program // Status bar program.
+	quitting              bool        // Whether we are quitting the program.
 }
 
 type position struct {

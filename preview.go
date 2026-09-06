@@ -7,6 +7,7 @@ import (
 	. "strings"
 	"unicode/utf8"
 
+	termimg "github.com/blacktop/go-termimg"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -117,6 +118,7 @@ func (m *model) renderPreviewHeader(fileName string) string {
 }
 
 func (m *model) preview() {
+	m.previewGraphic = nil
 	if !m.previewMode {
 		return
 	}
@@ -163,6 +165,28 @@ func (m *model) preview() {
 	}
 
 	if isImage(filePath) {
+		if m.images != nil {
+			imageHeight := height
+			if m.images.protocol == termimg.Kitty {
+				// Normal placements advance the cursor below the image. Leave a
+				// row so that rendering cannot scroll the terminal at its bottom.
+				imageHeight = max(1, height-1)
+			}
+			// The viewport reserves one trailing cell; match the pane's two-cell
+			// left padding by reserving one additional cell for graphics only.
+			graphic := m.images.request(filePath, fileInfo, max(1, width-1), imageHeight)
+			if graphic == nil || graphic.err == nil {
+				m.previewGraphic = graphic
+				m.setPreviewContent(filePath, "")
+				return
+			}
+			if graphic.fallback != "" {
+				m.setPreviewContent(filePath, graphic.fallback)
+			} else {
+				m.setPreviewContent(filePath, warning.Render("No image preview available"))
+			}
+			return
+		}
 		img, err := drawImage(filePath, width, height)
 		if err != nil {
 			m.setPreviewContent(filePath, warning.Render("No image preview available"))

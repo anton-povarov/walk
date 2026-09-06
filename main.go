@@ -109,16 +109,31 @@ func main() {
 
 	m.path = startPath
 	m.list()
+	m.images = newImagePreview()
 
 	opts := []tea.ProgramOption{
 		tea.WithOutput(os.Stderr),
+	}
+	if m.images != nil {
+		m.graphics = &graphicsOutput{out: os.Stderr}
+		opts = append(opts, tea.WithOutput(&graphicsTerminal{File: os.Stderr, graphics: m.graphics}))
 	}
 	if m.previewMode {
 		opts = append(opts, tea.WithAltScreen())
 	}
 
 	p := tea.NewProgram(m, opts...)
+	if m.images != nil {
+		m.images.notify = func() { p.Send(imageReadyMsg{}) }
+		go m.images.run()
+	}
 	lastM, err := p.Run()
+	if m.images != nil {
+		close(m.images.stop)
+	}
+	if m.graphics != nil {
+		_ = m.graphics.close()
+	}
 	if err != nil {
 		panic(err)
 	}

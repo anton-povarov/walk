@@ -86,7 +86,30 @@ Install [Nerd Fonts](https://www.nerdfonts.com) and add `--icons` flag.
 
 ### Image preview
 
-No additional setup is required.
+No additional setup is required. Preview PNG, JPEG, and GIF files with `Space`
+or `--preview`. GIF previews show a single frame.
+
+Walk uses `go-termimg` for high-resolution images in iTerm2 and terminals detected
+as supporting Kitty graphics. iTerm2 is explicitly preferred when both protocols
+are detected. Other terminals, tmux, and screen use the existing Unicode
+half-block renderer.
+
+Images fit the preview pane without stretching, with Lanczos scaling and a 5×
+enlargement limit. Preparation runs in the background and is cached until the
+file or pane dimensions change. Images have equal two-cell left and right
+padding inside the preview pane. Kitty uses normal placements (as in the spike),
+with a trailing row reserved to prevent cursor movement from scrolling the screen.
+Kitty preserves transparency; the pinned
+`go-termimg` iTerm2 backend encodes JPEG, so transparent areas appear black.
+
+Set `WALK_IMAGE_PROTOCOL=auto|iterm2|kitty|halfblocks` to choose a backend
+(`auto` is the default). Explicit graphics selection is intended for compatible
+terminals whose automatic detection fails; multiplexers still use half-blocks.
+Cell dimensions are queried at startup and refreshed from terminal window
+metrics on resize when available.
+
+For implementation details, rendering constraints, known risks, and regression
+checks, see the [image preview developer guide](IMAGE_PREVIEWS.md).
 
 <img src=".github/images/images-mode.gif" width="600" alt="Walk Image Preview">
 
