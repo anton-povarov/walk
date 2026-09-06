@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 )
 
@@ -18,4 +19,8 @@ func parseOpenWith(s string) {
 		}
 		openWith[split[0]] = split[1]
 	}
+}
+
+func extension(path string) string {
+	return strings.TrimLeft(strings.ToLower(filepath.Ext(path)), ".")
 }

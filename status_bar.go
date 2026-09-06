@@ -125,3 +125,10 @@ func (e Env) ModTime() string {
 	}
 	return modTime.Format("Jan 2 2006")
 }
+
+func permBit(bit fs.FileMode, c byte) byte {
+	if bit != 0 {
+		return c
+	}
+	return '-'
+}
