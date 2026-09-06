@@ -21,7 +21,7 @@ func usage(out io.Writer, full bool) {
 	put("    tab\tOpen preview / switch pane")
 	put("    preview: up/down, j/k\tScroll line")
 	put("    preview: pgup/pgdown, b/f\tScroll page")
-	put("    esc, q\tExit with cd")
+	put("    esc, q, ctrl+q\tExit with cd")
 	put("    ctrl+c\tExit without cd")
 	put("    /\tFuzzy search")
 	put("    d, delete\tDelete file or dir")
