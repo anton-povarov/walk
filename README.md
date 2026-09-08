@@ -104,9 +104,10 @@ Kitty preserves transparency; the pinned
 
 Set `WALK_IMAGE_PROTOCOL=auto|iterm2|kitty|halfblocks` to choose a backend
 (`auto` is the default). Explicit graphics selection is intended for compatible
-terminals whose automatic detection fails; multiplexers still use half-blocks.
-Cell dimensions are queried at startup and refreshed from terminal window
-metrics on resize when available.
+terminals whose environment-based detection fails; multiplexers still use
+half-blocks. Walk does not query terminal features during startup. Cell
+dimensions use terminal-specific defaults and are refreshed from terminal
+window metrics when available.
 
 For implementation details, rendering constraints, known risks, and regression
 checks, see the [image preview developer guide](IMAGE_PREVIEWS.md).

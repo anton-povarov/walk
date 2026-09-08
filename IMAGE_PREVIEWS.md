@@ -18,13 +18,14 @@ several details below are specific to that version.
 
 ## Backend selection and terminal discovery
 
-`newImagePreview()` runs before `tea.Program.Run()`. Terminal capability queries
-must finish before Bubble Tea starts reading input. `go-termimg` caches its
-features; later `Render()` calls reuse them.
+`newImagePreview()` runs before `tea.Program.Run()`, but does no terminal I/O.
+It detects known graphics-capable terminals from environment variables and
+primes `go-termimg`'s feature cache through its query-bypass mechanism. Later
+`Render()` calls reuse that cache instead of racing Bubble Tea's input reader.
 
 | `WALK_IMAGE_PROTOCOL` | Selection |
 | --- | --- |
-| Unset, empty, or `auto` | Prefer iTerm2 when detected, then Kitty, otherwise half-blocks |
+| Unset, empty, or `auto` | Prefer environment-detected iTerm2, then Kitty, otherwise half-blocks |
 | `iterm2` | Force the library's iTerm2 backend |
 | `kitty` | Force the library's Kitty backend |
 | `halfblocks` | Use the existing renderer without graphics detection |
@@ -39,12 +40,17 @@ The iTerm2 preference is intentional: the spike encountered detection that also
 reported Kitty support for iTerm2. Do not replace the explicit choice with the
 library's `Auto` renderer.
 
-Cell pixel dimensions come from the startup feature query. Invalid dimensions
-fall back to 8×16. For iTerm2, width and height are swapped when width exceeds
-height, matching the spike's workaround for the library's reversed dimensions.
-On Unix, each image request also checks stderr's `TIOCGWINSZ` pixel/cell metrics;
-usable values override the startup dimensions. Windows retains startup values.
-This avoids another terminal-input query during rendering.
+Active feature queries are deliberately avoided: unsupported query responses
+made normal startup hundreds of milliseconds slower, and deferring those
+queries would compete with Bubble Tea for terminal input. Unknown compatible
+terminals can opt in with `WALK_IMAGE_PROTOCOL=iterm2` or `kitty`.
+
+Cell pixel dimensions initially use `go-termimg`'s terminal-specific defaults.
+Invalid dimensions fall back to 8×16. For iTerm2, width and height are swapped
+when width exceeds height, matching the spike's workaround for the library's
+reversed dimensions. On Unix, each image request also checks stderr's
+`TIOCGWINSZ` pixel/cell metrics; usable values override the initial dimensions.
+Windows retains the defaults. Neither path reads terminal input.
 
 ## Preparation and model integration
 

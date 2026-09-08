@@ -57,10 +57,18 @@ func newImagePreview() *imagePreview {
 	if os.Getenv("TMUX") != "" || os.Getenv("STY") != "" {
 		return nil
 	}
-	// Query before Bubble Tea starts reading input. Render() reuses this cache.
-	f := termimg.QueryTerminalFeatures()
-	p := selectImageProtocol(mode, f.ITerm2Graphics, f.KittyGraphics)
+	// Terminal queries can take hundreds of milliseconds when one or more
+	// responses are unsupported. They also cannot safely be deferred because
+	// Bubble Tea will be reading from the same terminal. Environment detection
+	// is immediate; unknown terminals use the half-block fallback unless the
+	// user explicitly chooses a graphics protocol.
+	iterm, kitty := imageProtocolSupportFromEnvironment()
+	p := selectImageProtocol(mode, iterm, kitty)
 	if p == termimg.Auto {
+		return nil
+	}
+	f := cacheTerminalFeaturesWithoutQueries(p)
+	if f == nil {
 		return nil
 	}
 	w, h := f.FontWidth, f.FontHeight
@@ -72,6 +80,45 @@ func newImagePreview() *imagePreview {
 	}
 	return &imagePreview{protocol: p, cellWidth: w, cellHeight: h,
 		requests: make(chan graphicsKey, 1), stop: make(chan struct{})}
+}
+
+func imageProtocolSupportFromEnvironment() (iterm, kitty bool) {
+	switch strings.ToLower(os.Getenv("TERMIMG_BYPASS_DETECTION")) {
+	case "iterm2":
+		iterm = true
+	case "kitty":
+		kitty = true
+	}
+	return iterm || termimg.DetectITerm2FromEnvironment(),
+		kitty || termimg.DetectKittyFromEnvironment()
+}
+
+// go-termimg asks for terminal features again while rendering, even when its
+// protocol and scale are explicit. Prime its process-wide cache through the
+// library's documented bypass so background image preparation never queries
+// the terminal concurrently with Bubble Tea's input reader.
+func cacheTerminalFeaturesWithoutQueries(protocol termimg.Protocol) *termimg.TerminalFeatures {
+	var mode string
+	switch protocol {
+	case termimg.ITerm2:
+		mode = "iterm2"
+	case termimg.Kitty:
+		mode = "kitty"
+	default:
+		return nil
+	}
+
+	previous, existed := os.LookupEnv("TERMIMG_BYPASS_DETECTION")
+	if err := os.Setenv("TERMIMG_BYPASS_DETECTION", mode); err != nil {
+		return nil
+	}
+	features := termimg.QueryTerminalFeatures()
+	if existed {
+		_ = os.Setenv("TERMIMG_BYPASS_DETECTION", previous)
+	} else {
+		_ = os.Unsetenv("TERMIMG_BYPASS_DETECTION")
+	}
+	return features
 }
 
 func selectImageProtocol(mode string, iterm, kitty bool) termimg.Protocol {

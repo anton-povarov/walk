@@ -175,6 +175,47 @@ func TestImageProtocolSelection(t *testing.T) {
 	}
 }
 
+func TestImageProtocolSupportFromEnvironment(t *testing.T) {
+	for _, name := range []string{
+		"TERMIMG_BYPASS_DETECTION", "TERM_PROGRAM", "TERM", "KITTY_WINDOW_ID",
+		"WEZTERM_EXECUTABLE", "LC_TERMINAL", "ITERM_SESSION_ID", "TERM_SESSION_ID",
+	} {
+		t.Setenv(name, "")
+	}
+
+	iterm, kitty := imageProtocolSupportFromEnvironment()
+	if iterm || kitty {
+		t.Fatalf("unexpected protocol support: iterm=%v kitty=%v", iterm, kitty)
+	}
+
+	t.Setenv("TERM_PROGRAM", "ghostty")
+	_, kitty = imageProtocolSupportFromEnvironment()
+	if !kitty {
+		t.Fatal("Ghostty was not recognized from the environment")
+	}
+
+	t.Setenv("TERM_PROGRAM", "")
+	t.Setenv("TERMIMG_BYPASS_DETECTION", "iterm2")
+	iterm, _ = imageProtocolSupportFromEnvironment()
+	if !iterm {
+		t.Fatal("TERMIMG_BYPASS_DETECTION was not honored")
+	}
+}
+
+func TestCacheTerminalFeaturesWithoutQueriesRestoresEnvironment(t *testing.T) {
+	termimg.ClearFeatureCache()
+	t.Cleanup(termimg.ClearFeatureCache)
+	t.Setenv("TERMIMG_BYPASS_DETECTION", "original")
+
+	features := cacheTerminalFeaturesWithoutQueries(termimg.Kitty)
+	if features == nil || !features.KittyGraphics {
+		t.Fatalf("Kitty features were not cached: %+v", features)
+	}
+	if got := os.Getenv("TERMIMG_BYPASS_DETECTION"); got != "original" {
+		t.Fatalf("environment was not restored: %q", got)
+	}
+}
+
 func TestFitGraphic(t *testing.T) {
 	for _, tc := range []struct {
 		name                     string
