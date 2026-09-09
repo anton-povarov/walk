@@ -106,7 +106,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case key.Matches(msg, keyQuit, keyQuitQ, keyQuitCQ):
 				return m.quit(false)
 
-			case key.Matches(msg, keyTab):
+			case key.Matches(msg, keyTab, keyBack):
 				m.previewFocused = false
 				m.clearTransientState()
 				return m, nil
