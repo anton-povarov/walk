@@ -568,6 +568,15 @@ func (m *model) open() tea.Cmd {
 
 	commandSlice := append(Split(commandString, " "), filePath)
 	execCmd := exec.Command(commandSlice[0], commandSlice[1:]...)
+	// Bubble Tea normally connects child stdout to the program output. When
+	// image previews are enabled that output is a graphicsTerminal wrapper,
+	// which os/exec exposes to the child through a pipe. Interactive programs
+	// such as Vim then no longer see a TTY and print a warning. Connect the
+	// child directly to the terminal descriptors instead. Walk renders on
+	// stderr because stdout is reserved for the selected directory for cd "$(walk)" integration.
+	execCmd.Stdin = os.Stdin
+	execCmd.Stdout = os.Stderr
+	execCmd.Stderr = os.Stderr
 	return tea.ExecProcess(execCmd, func(err error) tea.Msg {
 		// Note: we could return a message here indicating that editing is
 		// finished and altering our application about any errors. For now,
