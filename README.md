@@ -88,29 +88,7 @@ Install [Nerd Fonts](https://www.nerdfonts.com) and add `--icons` flag.
 
 No additional setup is required. Preview PNG, JPEG, and GIF files with `Space`
 or `--preview`. GIF previews show a single frame.
-
-Walk uses `go-termimg` for high-resolution images in iTerm2 and terminals detected
-as supporting Kitty graphics. iTerm2 is explicitly preferred when both protocols
-are detected. Other terminals, tmux, and screen use the existing Unicode
-half-block renderer.
-
-Images fit the preview pane without stretching, with Lanczos scaling and a 5×
-enlargement limit. Preparation runs in the background and is cached until the
-file or pane dimensions change. Images have equal two-cell left and right
-padding inside the preview pane. Kitty uses normal placements (as in the spike),
-with a trailing row reserved to prevent cursor movement from scrolling the screen.
-Kitty preserves transparency; the pinned
-`go-termimg` iTerm2 backend encodes JPEG, so transparent areas appear black.
-
-Set `WALK_IMAGE_PROTOCOL=auto|iterm2|kitty|halfblocks` to choose a backend
-(`auto` is the default). Explicit graphics selection is intended for compatible
-terminals whose environment-based detection fails; multiplexers still use
-half-blocks. Walk does not query terminal features during startup. Cell
-dimensions use terminal-specific defaults and are refreshed from terminal
-window metrics when available.
-
-For implementation details, rendering constraints, known risks, and regression
-checks, see the [image preview developer guide](IMAGE_PREVIEWS.md).
+Original resolution rendering is attempted if the terminal supports it, if not - half-blocks are used.
 
 <img src=".github/images/images-mode.gif" width="600" alt="Walk Image Preview">
 
@@ -121,12 +99,12 @@ checks, see the [image preview developer guide](IMAGE_PREVIEWS.md).
 | <kbd>arrows</kbd>, <kbd>hjkl</kbd>   | Move cursor        |
 | <kbd>shift</kbd> + <kbd>arrows</kbd> | Jump to start/end  |
 | <kbd>enter</kbd>                     | Enter directory    |
-| <kbd>backspace</kbd>                 | Exit directory     |
+| <kbd>backspace</kbd>                 | Exit directory or switch back to the main pane     |
 | <kbd>space</kbd>                     | Toggle preview     |
 | <kbd>tab</kbd>                       | Open/switch preview pane |
 | <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>j</kbd>/<kbd>k</kbd> | Scroll focused preview |
-| <kbd>page up</kbd>/<kbd>page down</kbd>, <kbd>b</kbd>/<kbd>f</kbd> | Page focused preview |
-| <kbd>esc</kbd>, <kbd>q</kbd>         | Exit with cd       |
+| <kbd>page up</kbd>/<kbd>page down</kbd>, <kbd>b</kbd>/<kbd>f</kbd> | Page through the focused preview |
+| <kbd>esc</kbd>, <kbd>q</kbd>, <kbd>ctrl</kbd> + <kbd>q</kbd>       | Exit with cd       |
 | <kbd>ctrl</kbd> + <kbd>c</kbd>       | Exit without cd    |
 | <kbd>/</kbd>                         | Fuzzy search       |
 | <kbd>d</kbd>, <kbd>delete</kbd>      | Delete file or dir |
@@ -181,6 +159,15 @@ Use `WALK_STATUS_BAR` environment variable to specify a [status bar](STATUS_BAR.
 ```bash
 export WALK_STATUS_BAR="Size() + ' ' + Mode()"
 ```
+
+Use `WALK_IMAGE_PROTOCOL=auto|iterm2|kitty|halfblocks` to choose a terminal image rendering backend.
+This is intended for compatible terminals whose environment-based detection fails.
+Multiplexers will still always use half-blocks. 
+
+```bash
+export WALK_IMAGE_PROTOCOL="auto"
+```
+
 
 ### Flags
 
